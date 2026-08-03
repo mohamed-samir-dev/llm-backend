@@ -51,6 +51,7 @@ if (config.env === 'development') {
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
+app.all('/api/ext/*', (req, res) => res.status(200).json({}));
 app.use('/api/v1', routes);
 
 // Health check

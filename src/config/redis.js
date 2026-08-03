@@ -1,21 +1,41 @@
 const Redis = require('ioredis');
 const config = require('./index');
 
-const redis = new Redis(config.redis.url, {
-  retryStrategy: (times) => Math.min(times * 50, 2000),
-  maxRetriesPerRequest: 3,
+let redis = null;
+let bullmqConnection = null;
+let redisAvailable = false;
+
+const testConnection = () => new Promise((resolve) => {
+  const client = new Redis(config.redis.url, { retryStrategy: () => null, connectTimeout: 2000, lazyConnect: true });
+  client.on('error', () => {});
+  client.connect()
+    .then(() => { redisAvailable = true; client.disconnect(); resolve(true); })
+    .catch(() => { resolve(false); });
 });
 
-redis.on('connect', () => console.log('✅ Redis connected'));
-redis.on('error', (err) => console.error('❌ Redis error:', err.message));
+const init = async () => {
+  const ok = await testConnection();
+  if (!ok) {
+    console.warn('⚠️  Redis unavailable — running without cache/queues');
+    return;
+  }
+  redis = new Redis(config.redis.url, { retryStrategy: () => null, maxRetriesPerRequest: 1 });
+  redis.on('connect', () => console.log('✅ Redis connected'));
+  redis.on('error', () => {});
 
-// Separate connection for BullMQ (requires maxRetriesPerRequest: null)
-const bullmqConnection = new Redis(config.redis.url, {
-  retryStrategy: (times) => Math.min(times * 50, 2000),
-  maxRetriesPerRequest: null,
+  bullmqConnection = new Redis(config.redis.url, { retryStrategy: () => null, maxRetriesPerRequest: null, enableOfflineQueue: false });
+  bullmqConnection.on('error', () => {});
+  redisAvailable = true;
+};
+
+// Safe redis proxy — silently no-ops if redis is down
+const safeRedis = new Proxy({}, {
+  get: (_, prop) => async () => null,
 });
 
-bullmqConnection.on('error', (err) => console.error('❌ BullMQ Redis error:', err.message));
-
-module.exports = redis;
-module.exports.bullmqConnection = bullmqConnection;
+module.exports = {
+  init,
+  get redis() { return redis || safeRedis; },
+  get bullmqConnection() { return bullmqConnection; },
+  get redisAvailable() { return redisAvailable; },
+};

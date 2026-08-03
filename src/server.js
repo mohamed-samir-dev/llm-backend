@@ -12,8 +12,10 @@ process.on('uncaughtException', (err) => {
 const startServer = async () => {
   await connectDB();
 
-  // Initialize BullMQ workers (queues)
-  require('./services/queue.service');
+  const redisConfig = require('./config/redis');
+  await redisConfig.init();
+  const { initQueues } = require('./services/queue.service');
+  initQueues();
 
   const server = app.listen(config.port, () => {
     console.log(`🚀 Server running in ${config.env} mode on port ${config.port}`);

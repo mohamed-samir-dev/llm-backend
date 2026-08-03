@@ -32,21 +32,11 @@ async function seed() {
     wishlist:         { type: Array, default: [] },
   }, { timestamps: true }));
 
-  const existing = await User.findOne({ email: ADMIN_EMAIL });
-  if (existing) {
-    console.log('⚠️  الأدمن موجود بالفعل:', ADMIN_EMAIL);
-    await mongoose.disconnect();
-    return;
-  }
-
   const hashed = await bcrypt.hash(ADMIN_PASS, 12);
+  await User.deleteOne({ email: ADMIN_EMAIL });
   await User.create({
-    name:            ADMIN_NAME,
-    email:           ADMIN_EMAIL,
-    password:        hashed,
-    role:            'admin',
-    isEmailVerified: true,
-    isActive:        true,
+    name: ADMIN_NAME, email: ADMIN_EMAIL, password: hashed,
+    role: 'admin', isEmailVerified: true, isActive: true,
   });
 
   console.log('🎉 تم إنشاء حساب الأدمن بنجاح!');

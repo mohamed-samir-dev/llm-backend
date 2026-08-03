@@ -2,32 +2,37 @@ const authRepo = require('./auth.repository');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../../utils/jwt');
 const { sendEmail, emailTemplates } = require('../../services/email.service');
 const AppError = require('../../utils/AppError');
-const redis = require('../../config/redis');
+const redisConfig = require('../../config/redis');
 const config = require('../../config');
 const User = require('../users/user.model');
 
-const register = async ({ name, email, password, phone, deviceInfo }) => {
-  const existing = await authRepo.findByEmail(email);
-  if (existing) throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
+const checkFieldExists = (field, value) => User.findOne({ [field]: value }).select('_id');
 
-  const user = await authRepo.createUser({ name, email, password, phone });
-
-  // Send verification email
-  const token = await authRepo.setEmailVerificationToken(user._id);
-  const verifyUrl = `${config.clientUrl}/verify-email?token=${token}`;
-  const template = emailTemplates.verifyEmail(name, verifyUrl);
-  await sendEmail({ to: email, ...template });
+const register = async ({
+  firstName, fatherName, lastName,
+  email, password, phone,
+  grade, school, governorate, city, educationType, gender,
+  guardian,
+  acceptTerms, acceptPrivacy, acceptNotifications,
+}) => {
+  const user = await authRepo.createUser({
+    firstName, fatherName, lastName,
+    email, password, phone,
+    grade, school, governorate, city, educationType, gender,
+    guardian,
+    acceptTerms, acceptPrivacy, acceptNotifications: acceptNotifications || false,
+    isEmailVerified: true,
+  });
 
   return user;
 };
 
-const login = async ({ email, password, deviceInfo }) => {
-  const user = await authRepo.findByEmail(email);
+const login = async ({ phone, password, deviceInfo }) => {
+  const user = await authRepo.findByPhone(phone);
   if (!user || !(await user.comparePassword(password))) {
-    throw new AppError('البريد الإلكتروني أو كلمة المرور غير صحيحة', 401);
+    throw new AppError('رقم الهاتف أو كلمة المرور غير صحيحة', 401);
   }
   if (user.isBanned) throw new AppError('تم حظر هذا الحساب', 403);
-  if (!user.isEmailVerified) throw new AppError('يرجى تأكيد بريدك الإلكتروني أولاً', 401);
 
   // Device management - max 2 devices
   const { deviceId, fingerprint, ip, userAgent } = deviceInfo;
@@ -55,12 +60,11 @@ const login = async ({ email, password, deviceInfo }) => {
 };
 
 const logout = async (userId, token) => {
-  // Blacklist access token
-  const decoded = require('jsonwebtoken').decode(token);
-  const ttl = decoded.exp - Math.floor(Date.now() / 1000);
-  if (ttl > 0) await redis.setex(`blacklist:${token}`, ttl, '1');
-
-  // Remove refresh token
+  try {
+    const decoded = require('jsonwebtoken').decode(token);
+    const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+    if (ttl > 0) await redisConfig.redis.setex(`blacklist:${token}`, ttl, '1');
+  } catch (_) {}
   await User.findByIdAndUpdate(userId, { $pull: { refreshTokens: token } });
 };
 
@@ -94,6 +98,17 @@ const verifyEmail = async (token) => {
   });
 };
 
+const resendVerification = async (email) => {
+  const user = await authRepo.findByEmail(email);
+  if (!user) throw new AppError('لا يوجد حساب بهذا البريد الإلكتروني', 404);
+  if (user.isEmailVerified) throw new AppError('البريد الإلكتروني مؤكد بالفعل', 400);
+
+  const token = await authRepo.setEmailVerificationToken(user._id);
+  const verifyUrl = `${config.clientUrl}/verify-email?token=${token}`;
+  const template = emailTemplates.verifyEmail(user.name || user.firstName, verifyUrl);
+  await sendEmail({ to: email, ...template });
+};
+
 const forgotPassword = async (email) => {
   const user = await authRepo.findByEmail(email);
   if (!user) throw new AppError('لا يوجد حساب بهذا البريد الإلكتروني', 404);
@@ -125,4 +140,4 @@ const changePassword = async (userId, currentPassword, newPassword) => {
   await user.save();
 };
 
-module.exports = { register, login, logout, refreshAccessToken, verifyEmail, forgotPassword, resetPassword, changePassword };
+module.exports = { checkFieldExists, register, login, logout, refreshAccessToken, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword };

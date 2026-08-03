@@ -3,6 +3,8 @@ const crypto = require('crypto');
 
 const findByEmail = (email) => User.findOne({ email }).select('+password +refreshTokens +emailVerificationToken +emailVerificationExpires +passwordResetToken +passwordResetExpires');
 
+const findByPhone = (phone) => User.findOne({ phone }).select('+password +refreshTokens');
+
 const findById = (id) => User.findById(id).select('+refreshTokens');
 
 const createUser = (data) => User.create(data);
@@ -43,4 +45,4 @@ const findByPasswordResetToken = async (token) => {
   }).select('+password');
 };
 
-module.exports = { findByEmail, findById, createUser, setEmailVerificationToken, verifyEmailToken, setPasswordResetToken, findByPasswordResetToken };
+module.exports = { findByEmail, findByPhone, findById, createUser, setEmailVerificationToken, verifyEmailToken, setPasswordResetToken, findByPasswordResetToken };

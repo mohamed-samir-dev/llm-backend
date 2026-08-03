@@ -9,9 +9,23 @@ const getDeviceInfo = (req) => ({
   userAgent: req.headers['user-agent'] || '',
 });
 
+const checkAvailability = catchAsync(async (req, res) => {
+  const { email, phone } = req.body;
+  const errors = {};
+  if (email) {
+    const existing = await authService.checkFieldExists('email', email);
+    if (existing) errors.email = 'البريد الإلكتروني مستخدم من قبل';
+  }
+  if (phone) {
+    const existing = await authService.checkFieldExists('phone', phone);
+    if (existing) errors.phone = 'رقم الهاتف مستخدم من قبل';
+  }
+  sendResponse(res, 200, { errors }, '');
+});
+
 const register = catchAsync(async (req, res) => {
   const user = await authService.register({ ...req.body, deviceInfo: getDeviceInfo(req) });
-  sendResponse(res, 201, { user }, 'تم إنشاء الحساب بنجاح. يرجى تأكيد بريدك الإلكتروني');
+  sendResponse(res, 201, { user }, 'تم إنشاء الحساب بنجاح');
 });
 
 const login = catchAsync(async (req, res) => {
@@ -54,6 +68,11 @@ const verifyEmail = catchAsync(async (req, res) => {
   sendResponse(res, 200, {}, 'تم تأكيد البريد الإلكتروني بنجاح');
 });
 
+const resendVerification = catchAsync(async (req, res) => {
+  await authService.resendVerification(req.body.email);
+  sendResponse(res, 200, {}, 'تم إرسال رابط التحقق مرة أخرى');
+});
+
 const forgotPassword = catchAsync(async (req, res) => {
   await authService.forgotPassword(req.body.email);
   sendResponse(res, 200, {}, 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني');
@@ -69,4 +88,4 @@ const changePassword = catchAsync(async (req, res) => {
   sendResponse(res, 200, {}, 'تم تغيير كلمة المرور بنجاح');
 });
 
-module.exports = { register, login, logout, refreshToken, verifyEmail, forgotPassword, resetPassword, changePassword };
+module.exports = { checkAvailability, register, login, logout, refreshToken, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword };
